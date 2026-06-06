@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  password    String
+  phone       String?
+  location    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  healthProfile HealthProfile?
+  alerts     Alert[]
+}
+
+model HealthProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  asthmaPatient         Boolean  @default(false)
+  ageGroup              String   @default("adult")
+  respiratoryConditions Boolean  @default(false)
+  outdoorWorker         Boolean  @default(false)
+  preferredLocations    String   @default("[]")
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id            String   @id @default(cuid())
+  userId        String
+  condition     String
+  location      String
+  frequency     String   @default("daily")
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  triggeredAt   DateTime?
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AQIRecord {
+  id            String   @id @default(cuid())
+  city          String
+  latitude      Float
+  longitude     Float
+  currentAQI    Int
+  category      String
+  pm25          Float
+  pm10          Float
+  no2           Float
+  o3            Float
+  so2           Float?
+  co            Float?
+  timestamp     DateTime @default(now())
+  forecastedAQI Int?
+}

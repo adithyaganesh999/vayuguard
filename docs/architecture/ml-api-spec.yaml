@@ -1,0 +1,796 @@
+openapi: 3.0.3
+info:
+  title: VayuGuard ML Service API
+  description: >
+    Machine Learning inference service for VayuGuard air quality forecasting
+    and health risk assessment. Provides AQI forecasts, personalized health
+    risk scores, and model management endpoints.
+  version: 1.0.0
+  contact:
+    name: VayuGuard AI/ML Team
+    email: ml-team@vayuguard.com
+    url: https://vayuguard.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://api-staging.vayuguard.com
+    description: Staging environment
+  - url: https://api.vayuguard.com
+    description: Production environment
+
+tags:
+  - name: Forecast
+    description: AQI forecasting endpoints
+  - name: Health Risk
+    description: Personalized health risk assessment
+  - name: Model Management
+    description: Model versioning and metadata
+  - name: Health
+    description: Service health checks
+
+paths:
+  /api/forecast:
+    post:
+      tags: [Forecast]
+      summary: Generate AQI forecast
+      description: >
+        Generate an AQI forecast for a given station and time horizon.
+        Supports multiple model types (LSTM, XGBoost, Prophet, Ensemble)
+        and configurable forecast horizons up to 168 hours (7 days).
+      operationId: generateForecast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastRequest'
+            examples:
+              standard:
+                summary: Standard 48-hour forecast
+                value:
+                  station_id: 42
+                  horizon_hours: 48
+                  model_type: ensemble
+              quick:
+                summary: Quick 24-hour LSTM forecast
+                value:
+                  station_id: 42
+                  horizon_hours: 24
+                  model_type: lstm
+      responses:
+        '200':
+          description: Forecast generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastResponse'
+              examples:
+                success:
+                  summary: Successful forecast response
+                  value:
+                    station_id: 42
+                    model_type: ensemble
+                    model_version: "2.3.1"
+                    generated_at: "2025-01-15T10:30:00Z"
+                    forecasts:
+                      - forecast_time: "2025-01-15T11:00:00Z"
+                        predicted_aqi: 142
+                        predicted_category: "Unhealthy for Sensitive Groups"
+                        confidence_low: 128
+                        confidence_high: 156
+                        confidence_score: 0.87
+                        predicted_pm25: 55.2
+                        predicted_pm10: 88.4
+                        predicted_o3: 34.1
+                      - forecast_time: "2025-01-15T12:00:00Z"
+                        predicted_aqi: 138
+                        predicted_category: "Unhealthy for Sensitive Groups"
+                        confidence_low: 122
+                        confidence_high: 154
+                        confidence_score: 0.85
+                        predicted_pm25: 52.8
+                        predicted_pm10: 85.1
+                        predicted_o3: 32.5
+                    metadata:
+                      total_predictions: 48
+                      horizon_hours: 48
+                      data_freshness_minutes: 12
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "ValidationError"
+                message: "horizon_hours must be between 1 and 168"
+                details:
+                  field: "horizon_hours"
+                  constraint: "1 <= horizon_hours <= 168"
+        '404':
+          description: Station not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "NotFoundError"
+                message: "Station with id 9999 not found"
+        '422':
+          description: Insufficient data for forecast
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "InsufficientDataError"
+                message: "Station 42 has fewer than 24 hours of recent data"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "InferenceError"
+                message: "Model inference failed unexpectedly"
+
+    get:
+      tags: [Forecast]
+      summary: Get cached forecast
+      description: >
+        Retrieve the most recently generated forecast for a station.
+        Returns cached results if available and not expired.
+      operationId: getCachedForecast
+      parameters:
+        - name: station_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Station ID
+        - name: model_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [lstm, xgboost, prophet, ensemble]
+            default: ensemble
+          description: Model type to retrieve
+        - name: hours
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Number of forecast hours to return
+      responses:
+        '200':
+          description: Cached forecast retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastResponse'
+        '404':
+          description: No cached forecast available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/health-risk:
+    post:
+      tags: [Health Risk]
+      summary: Calculate health risk score
+      description: >
+        Calculate a personalized health risk score based on a user's health
+        profile and current/projected air quality conditions. Returns a
+        risk level, advisory, and activity recommendations.
+      operationId: calculateHealthRisk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthRiskRequest'
+            examples:
+              standard:
+                summary: Standard health risk calculation
+                value:
+                  health_profile:
+                    age: 65
+                    gender: "female"
+                    conditions: ["asthma", "hypertension"]
+                    sensitivity_level: "high"
+                    activity_level: "light"
+                    smoking_status: "never"
+                  aqi_value: 175
+                  primary_pollutant: "pm25"
+                  pm25_concentration: 98.5
+                  location:
+                    latitude: 28.6139
+                    longitude: 77.2090
+                  include_forecast: true
+      responses:
+        '200':
+          description: Health risk calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRiskResponse'
+              examples:
+                high_risk:
+                  summary: High risk response for elderly with asthma
+                  value:
+                    risk_score: 82
+                    risk_level: "high"
+                    risk_category: "Respiratory Compromise"
+                    primary_concerns:
+                      - "PM2.5 exposure exacerbates asthma symptoms"
+                      - "Elevated blood pressure risk from poor air quality"
+                    advisory:
+                      summary: "Avoid outdoor activities. Keep rescue inhaler accessible."
+                      recommendations:
+                        - "Stay indoors with air purification"
+                        - "Use N95 mask if going outside is unavoidable"
+                        - "Monitor peak flow readings more frequently"
+                        - "Keep windows and doors closed"
+                      restrictions:
+                        - "Avoid outdoor exercise"
+                        - "Limit exposure to less than 30 minutes outdoors"
+                    activity_guidance:
+                      outdoor_exercise: "not_recommended"
+                      commuting: "use_enclosed_transport"
+                      indoor_activities: "safe"
+                      mask_recommended: true
+                    forecast_risk:
+                      next_24h_trend: "improving"
+                      next_24h_max_risk: 75
+                      safe_window:
+                        start: "2025-01-16T04:00:00Z"
+                        end: "2025-01-16T07:00:00Z"
+                    generated_at: "2025-01-15T10:30:00Z"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/model/version:
+    get:
+      tags: [Model Management]
+      summary: Get current model version info
+      description: >
+        Returns metadata about the currently deployed ML models including
+        version numbers, training dates, performance metrics, and feature
+        importance.
+      operationId: getModelVersion
+      parameters:
+        - name: model_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [lstm, xgboost, prophet, ensemble, all]
+            default: all
+          description: Specific model type to query
+      responses:
+        '200':
+          description: Model version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelVersionResponse'
+              examples:
+                all_models:
+                  summary: All model versions
+                  value:
+                    models:
+                      - model_type: "lstm"
+                        model_version: "2.3.1"
+                        training_date: "2025-01-10"
+                        training_samples: 524288
+                        metrics:
+                          mae: 12.4
+                          rmse: 18.7
+                          r2: 0.89
+                          mape: 8.2
+                        features:
+                          - "pm25_lag_1h"
+                          - "pm25_lag_24h"
+                          - "temperature"
+                          - "humidity"
+                          - "wind_speed"
+                          - "hour_of_day"
+                          - "day_of_week"
+                          - "month"
+                        status: "production"
+                      - model_type: "xgboost"
+                        model_version: "1.8.0"
+                        training_date: "2025-01-08"
+                        training_samples: 1048576
+                        metrics:
+                          mae: 14.1
+                          rmse: 20.3
+                          r2: 0.86
+                          mape: 9.5
+                        features:
+                          - "pm25_rolling_mean_6h"
+                          - "pm25_rolling_std_6h"
+                          - "temperature"
+                          - "humidity"
+                          - "pressure"
+                          - "wind_speed"
+                          - "wind_direction_sin"
+                          - "wind_direction_cos"
+                        status: "production"
+                      - model_type: "prophet"
+                        model_version: "1.2.0"
+                        training_date: "2025-01-05"
+                        training_samples: 262144
+                        metrics:
+                          mae: 16.8
+                          rmse: 23.1
+                          r2: 0.82
+                          mape: 11.3
+                        status: "production"
+                      - model_type: "ensemble"
+                        model_version: "3.1.0"
+                        training_date: "2025-01-12"
+                        training_samples: 524288
+                        metrics:
+                          mae: 10.2
+                          rmse: 15.4
+                          r2: 0.92
+                          mape: 6.8
+                        weights:
+                          lstm: 0.45
+                          xgboost: 0.35
+                          prophet: 0.20
+                        status: "production"
+                    deployed_at: "2025-01-12T14:30:00Z"
+                    deployed_by: "ml-pipeline"
+
+  /api/model/reload:
+    post:
+      tags: [Model Management]
+      summary: Reload model from storage
+      description: >
+        Trigger a hot-reload of the specified model from the model storage.
+        Useful after a new model version is registered via the training pipeline.
+        Requires admin authentication.
+      operationId: reloadModel
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - model_type
+              properties:
+                model_type:
+                  type: string
+                  enum: [lstm, xgboost, prophet, ensemble, all]
+                  description: Which model to reload
+                model_version:
+                  type: string
+                  description: >
+                    Specific version to load. If omitted, loads the latest
+                    registered version.
+                force:
+                  type: boolean
+                  default: false
+                  description: Force reload even if same version is loaded
+      responses:
+        '200':
+          description: Model reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_type:
+                    type: string
+                  previous_version:
+                    type: string
+                  current_version:
+                    type: string
+                  reload_time_ms:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [success, skipped]
+        '401':
+          description: Unauthorized
+        '500':
+          description: Model reload failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns service health status and model loading state
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  models_loaded:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model_type:
+                          type: string
+                        version:
+                          type: string
+                        loaded:
+                          type: boolean
+                  uptime_seconds:
+                    type: number
+                  last_inference_ms:
+                    type: number
+                  memory_usage_mb:
+                    type: number
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ForecastRequest:
+      type: object
+      required:
+        - station_id
+        - horizon_hours
+      properties:
+        station_id:
+          type: integer
+          description: Monitoring station ID
+          example: 42
+        horizon_hours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          description: Forecast horizon in hours (1-168, i.e., up to 7 days)
+          example: 48
+        model_type:
+          type: string
+          enum: [lstm, xgboost, prophet, ensemble]
+          default: ensemble
+          description: ML model type to use for forecasting
+        include_confidence:
+          type: boolean
+          default: true
+          description: Whether to include confidence intervals
+        confidence_level:
+          type: number
+          minimum: 0.8
+          maximum: 0.99
+          default: 0.95
+          description: Confidence level for intervals (0.80-0.99)
+        include_pollutants:
+          type: boolean
+          default: true
+          description: Whether to include individual pollutant forecasts
+
+    ForecastResponse:
+      type: object
+      properties:
+        station_id:
+          type: integer
+        model_type:
+          type: string
+        model_version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        forecasts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastPoint'
+        metadata:
+          $ref: '#/components/schemas/ForecastMetadata'
+
+    ForecastPoint:
+      type: object
+      properties:
+        forecast_time:
+          type: string
+          format: date-time
+        predicted_aqi:
+          type: integer
+          minimum: 0
+          maximum: 500
+        predicted_category:
+          type: string
+          enum:
+            - Good
+            - Moderate
+            - Unhealthy for Sensitive Groups
+            - Unhealthy
+            - Very Unhealthy
+            - Hazardous
+        confidence_low:
+          type: integer
+        confidence_high:
+          type: integer
+        confidence_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        predicted_pm25:
+          type: number
+          format: float
+        predicted_pm10:
+          type: number
+          format: float
+        predicted_o3:
+          type: number
+          format: float
+
+    ForecastMetadata:
+      type: object
+      properties:
+        total_predictions:
+          type: integer
+        horizon_hours:
+          type: integer
+        data_freshness_minutes:
+          type: integer
+          description: Minutes since the last AQI reading used for this forecast
+
+    HealthRiskRequest:
+      type: object
+      required:
+        - health_profile
+        - aqi_value
+      properties:
+        health_profile:
+          $ref: '#/components/schemas/HealthProfileInput'
+        aqi_value:
+          type: integer
+          minimum: 0
+          maximum: 500
+        primary_pollutant:
+          type: string
+          enum: [pm25, pm10, o3, no2, so2, co]
+        pm25_concentration:
+          type: number
+          format: float
+        location:
+          $ref: '#/components/schemas/GeoLocation'
+        include_forecast:
+          type: boolean
+          default: false
+          description: Include 24-hour risk forecast in response
+
+    HealthProfileInput:
+      type: object
+      required:
+        - age
+        - sensitivity_level
+      properties:
+        age:
+          type: integer
+          minimum: 1
+          maximum: 120
+        gender:
+          type: string
+          enum: [male, female, non-binary, prefer-not-to-say]
+        conditions:
+          type: array
+          items:
+            type: string
+            enum:
+              - asthma
+              - copd
+              - heart-disease
+              - diabetes
+              - hypertension
+              - allergies
+              - lung-cancer
+              - other
+        sensitivity_level:
+          type: string
+          enum: [low, moderate, high, very-high]
+        activity_level:
+          type: string
+          enum: [sedentary, light, moderate, active, very-active]
+        smoking_status:
+          type: string
+          enum: [never, former, current]
+
+    HealthRiskResponse:
+      type: object
+      properties:
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Composite health risk score (0=lowest risk, 100=highest risk)
+        risk_level:
+          type: string
+          enum: [low, moderate, high, very-high, critical]
+        risk_category:
+          type: string
+          description: Primary health risk category
+        primary_concerns:
+          type: array
+          items:
+            type: string
+        advisory:
+          $ref: '#/components/schemas/HealthAdvisory'
+        activity_guidance:
+          $ref: '#/components/schemas/ActivityGuidance'
+        forecast_risk:
+          $ref: '#/components/schemas/ForecastRisk'
+        generated_at:
+          type: string
+          format: date-time
+
+    HealthAdvisory:
+      type: object
+      properties:
+        summary:
+          type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        restrictions:
+          type: array
+          items:
+            type: string
+
+    ActivityGuidance:
+      type: object
+      properties:
+        outdoor_exercise:
+          type: string
+          enum: [recommended, acceptable, limit, not_recommended, avoid]
+        commuting:
+          type: string
+          enum: [any, prefer_enclosed, use_enclosed_transport, avoid_travel]
+        indoor_activities:
+          type: string
+          enum: [safe, safe_with_purification, caution, avoid]
+        mask_recommended:
+          type: boolean
+
+    ForecastRisk:
+      type: object
+      properties:
+        next_24h_trend:
+          type: string
+          enum: [improving, stable, worsening, fluctuating]
+        next_24h_max_risk:
+          type: integer
+        safe_window:
+          type: object
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+
+    GeoLocation:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    ModelVersionResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+        deployed_at:
+          type: string
+          format: date-time
+        deployed_by:
+          type: string
+
+    ModelInfo:
+      type: object
+      properties:
+        model_type:
+          type: string
+        model_version:
+          type: string
+        training_date:
+          type: string
+          format: date
+        training_samples:
+          type: integer
+        metrics:
+          $ref: '#/components/schemas/ModelMetrics'
+        features:
+          type: array
+          items:
+            type: string
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+          description: Ensemble weights (only for ensemble model type)
+        status:
+          type: string
+          enum: [production, staging, deprecated, failed]
+
+    ModelMetrics:
+      type: object
+      properties:
+        mae:
+          type: number
+          description: Mean Absolute Error
+        rmse:
+          type: number
+          description: Root Mean Square Error
+        r2:
+          type: number
+          description: R-squared (coefficient of determination)
+        mape:
+          type: number
+          description: Mean Absolute Percentage Error
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error type/code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context

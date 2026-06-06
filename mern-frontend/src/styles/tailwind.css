@@ -1,0 +1,6 @@
+/* VayuGuard Tailwind CSS Imports */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./variables.css";
+@import "./global.css";

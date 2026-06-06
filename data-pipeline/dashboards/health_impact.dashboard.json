@@ -1,0 +1,134 @@
+{
+  "dashboard": {
+    "id": "health-impact",
+    "title": "VayuGuard Health Impact Dashboard",
+    "description": "Air pollution health risk assessment across demographic groups and cities",
+    "version": "1.0.0",
+    "refresh_interval_seconds": 600,
+    "layout": "grid",
+    "theme": "light"
+  },
+  "panels": [
+    {
+      "id": "vulnerability-map",
+      "title": "City Vulnerability Index",
+      "type": "choropleth_map",
+      "position": {"row": 1, "col": 1, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, vulnerability_index, vulnerability_level, avg_aqi FROM analytics_city_vulnerability ORDER BY vulnerability_index DESC",
+        "refId": "vuln"
+      },
+      "map_config": {
+        "center": {"lat": 22.5, "lon": 79.0},
+        "zoom": 5,
+        "region": "india"
+      },
+      "color_scale": {
+        "field": "vulnerability_index",
+        "min": 0,
+        "max": 100,
+        "colors": ["#2ecc71", "#f1c40f", "#e67e22", "#e74c3c", "#8e44ad"]
+      }
+    },
+    {
+      "id": "risk-by-demographic",
+      "title": "Risk by Demographic Group",
+      "type": "grouped_bar_chart",
+      "position": {"row": 1, "col": 7, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT demographic, city, risk_score FROM analytics_demographic_risk ORDER BY risk_score DESC",
+        "refId": "demo"
+      },
+      "x_axis": {"field": "demographic", "label": "Demographic Group"},
+      "y_axis": {"field": "risk_score", "label": "Risk Score (0-10+)"},
+      "group_by": "city",
+      "colors": {"Delhi": "#e74c3c", "Mumbai": "#3498db", "Bangalore": "#2ecc71", "Chennai": "#f39c12"}
+    },
+    {
+      "id": "health-outcomes-estimate",
+      "title": "Estimated Health Outcomes",
+      "type": "stacked_bar_chart",
+      "position": {"row": 5, "col": 1, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, health_outcome, pollution_attributable_cases FROM analytics_health_outcomes ORDER BY city, health_outcome",
+        "refId": "outcomes"
+      },
+      "x_axis": {"field": "city", "label": "City"},
+      "y_axis": {"field": "pollution_attributable_cases", "label": "Attributable Cases"},
+      "stack_field": "health_outcome",
+      "colors": {
+        "respiratory_er_visits": "#e74c3c",
+        "asthma_attacks": "#f39c12",
+        "cv_hospitalizations": "#9b59b6",
+        "premature_deaths": "#2c3e50"
+      }
+    },
+    {
+      "id": "exposure-category-donut",
+      "title": "Population Exposure by AQI Category",
+      "type": "donut_chart",
+      "position": {"row": 5, "col": 7, "width": 3, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT health_category, total_population_millions FROM analytics_exposure_by_category",
+        "refId": "exposure"
+      },
+      "colors": {
+        "Good": "#00e400",
+        "Satisfactory": "#ffff00",
+        "Moderate": "#ff7e00",
+        "Poor": "#ff0000",
+        "Very Poor": "#8f3f97",
+        "Severe": "#7e0023"
+      }
+    },
+    {
+      "id": "vulnerability-ranking",
+      "title": "Vulnerability Ranking",
+      "type": "horizontal_bar",
+      "position": {"row": 5, "col": 10, "width": 3, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, vulnerability_index FROM analytics_city_vulnerability ORDER BY vulnerability_index DESC LIMIT 10",
+        "refId": "rank"
+      },
+      "x_axis": {"field": "vulnerability_index", "label": "Score"},
+      "y_axis": {"field": "city", "label": "City"},
+      "color_by_value": true
+    },
+    {
+      "id": "temporal-risk",
+      "title": "Health Risk by Time of Day",
+      "type": "heatmap_chart",
+      "position": {"row": 9, "col": 1, "width": 6, "height": 3},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, time_period, avg_aqi FROM analytics_temporal_risk ORDER BY city, time_period",
+        "refId": "temporal"
+      },
+      "x_axis": {"field": "time_period", "label": "Time Period"},
+      "y_axis": {"field": "city", "label": "City"},
+      "value_field": "avg_aqi",
+      "color_scale": {"min": 0, "max": 400, "colors": ["#2ecc71", "#f1c40f", "#e74c3c", "#7e0023"]}
+    },
+    {
+      "id": "key-metrics",
+      "title": "Key Health Metrics",
+      "type": "stat_cards",
+      "position": {"row": 9, "col": 7, "width": 6, "height": 3},
+      "metrics": [
+        {"title": "Total Population Exposed", "query": "SELECT SUM(total_population_millions) FROM analytics_exposure_by_category WHERE health_category NOT IN ('Good')", "unit": "M", "format": "number"},
+        {"title": "Cities in Poor/Severe", "query": "SELECT COUNT(DISTINCT city) FROM aqi_readings WHERE parameter='aqi' AND value > 200 AND timestamp_utc >= NOW() - INTERVAL '24 hours'", "unit": "", "format": "number"},
+        {"title": "Avg Vulnerability Index", "query": "SELECT AVG(vulnerability_index) FROM analytics_city_vulnerability", "unit": "/100", "format": "decimal"},
+        {"title": "Attributable Cases/Year", "query": "SELECT SUM(pollution_attributable_cases) FROM analytics_health_outcomes", "unit": "", "format": "compact_number"}
+      ]
+    }
+  ],
+  "variables": [
+    {"name": "city", "type": "query", "label": "City", "default": "all", "query": "SELECT DISTINCT city FROM stations ORDER BY city"},
+    {"name": "demographic", "type": "custom", "label": "Demographic", "default": "all", "options": ["all", "children_0_5", "elderly_65_plus", "outdoor_workers", "pregnant_women"]}
+  ]
+}

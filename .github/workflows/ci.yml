@@ -1,0 +1,71 @@
+name: PlaceMux CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # Frontend
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Frontend Dependencies
+      working-directory: ./mern-frontend
+      run: npm install
+
+    - name: Build Frontend
+      working-directory: ./mern-frontend
+      run: npm run build
+
+    # Backend
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Backend Dependencies
+      working-directory: ./mern-backend
+      run: |
+        pip install -r requirements.txt
+
+    # ML Service
+    - name: Install ML Dependencies
+      working-directory: ./ml-service
+      run: |
+        pip install -r requirements.txt
+
+    # Docker Images
+    - name: Build Frontend Docker Image
+      run: |
+        docker build \
+        -f infrastructure/docker/Dockerfile.frontend \
+        -t placemux-frontend .
+
+    - name: Build Backend Docker Image
+      run: |
+        docker build \
+        -f infrastructure/docker/Dockerfile.backend \
+        -t placemux-backend .
+
+    - name: Build ML Docker Image
+      run: |
+        docker build \
+        -f infrastructure/docker/Dockerfile.ml \
+        -t placemux-ml .
+
+    - name: Success
+      run: echo "CI Pipeline Completed Successfully"

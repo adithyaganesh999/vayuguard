@@ -1,0 +1,129 @@
+{
+  "dashboard": {
+    "id": "aqi-trends",
+    "title": "VayuGuard AQI Trends Dashboard",
+    "description": "Real-time and historical air quality index trends across Indian cities",
+    "version": "1.0.0",
+    "refresh_interval_seconds": 300,
+    "layout": "grid",
+    "theme": "light"
+  },
+  "panels": [
+    {
+      "id": "aqi-timeseries",
+      "title": "AQI Time Series",
+      "type": "line_chart",
+      "position": {"row": 1, "col": 1, "width": 8, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT timestamp_utc, city, AVG(value) as avg_aqi FROM aqi_readings WHERE parameter = 'pm25' AND is_cleaned = TRUE AND timestamp_utc >= NOW() - INTERVAL '7 days' GROUP BY city, timestamp_utc ORDER BY timestamp_utc",
+        "refId": "A"
+      },
+      "x_axis": {"field": "timestamp_utc", "label": "Time", "type": "datetime"},
+      "y_axis": {"field": "avg_aqi", "label": "AQI (PM2.5)", "min": 0, "max": 500},
+      "series": {"group_by": "city", "colors": {"Delhi": "#e74c3c", "Mumbai": "#3498db", "Bangalore": "#2ecc71", "Chennai": "#f39c12", "Kolkata": "#9b59b6"}},
+      "thresholds": [
+        {"value": 50, "label": "Good", "color": "#00e400"},
+        {"value": 100, "label": "Satisfactory", "color": "#ffff00"},
+        {"value": 200, "label": "Moderate", "color": "#ff7e00"},
+        {"value": 300, "label": "Poor", "color": "#ff0000"},
+        {"value": 400, "label": "Very Poor", "color": "#8f3f97"}
+      ]
+    },
+    {
+      "id": "city-aqi-gauge",
+      "title": "Current AQI by City",
+      "type": "gauge",
+      "position": {"row": 1, "col": 9, "width": 4, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, value as aqi FROM v_latest_city_aqi WHERE parameter = 'aqi' ORDER BY value DESC",
+        "refId": "B"
+      },
+      "gauge": {
+        "min": 0,
+        "max": 500,
+        "segments": [
+          {"from": 0, "to": 50, "color": "#00e400", "label": "Good"},
+          {"from": 51, "to": 100, "color": "#ffff00", "label": "Satisfactory"},
+          {"from": 101, "to": 200, "color": "#ff7e00", "label": "Moderate"},
+          {"from": 201, "to": 300, "color": "#ff0000", "label": "Poor"},
+          {"from": 301, "to": 400, "color": "#8f3f97", "label": "Very Poor"},
+          {"from": 401, "to": 500, "color": "#7e0023", "label": "Severe"}
+        ]
+      }
+    },
+    {
+      "id": "daily-aqi-bar",
+      "title": "Daily Average AQI",
+      "type": "bar_chart",
+      "position": {"row": 5, "col": 1, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, reading_date, avg_value FROM v_daily_city_aqi WHERE parameter = 'pm25' AND reading_date >= CURRENT_DATE - INTERVAL '30 days' ORDER BY reading_date",
+        "refId": "C"
+      },
+      "x_axis": {"field": "reading_date", "label": "Date"},
+      "y_axis": {"field": "avg_value", "label": "PM2.5 (µg/m³)"},
+      "color_by_value": true
+    },
+    {
+      "id": "aqi-distribution",
+      "title": "AQI Category Distribution",
+      "type": "pie_chart",
+      "position": {"row": 5, "col": 7, "width": 4, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT aqi_category, COUNT(*) as count FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '24 hours' AND is_cleaned = TRUE GROUP BY aqi_category",
+        "refId": "D"
+      },
+      "colors": {
+        "Good": "#00e400",
+        "Satisfactory": "#ffff00",
+        "Moderate": "#ff7e00",
+        "Poor": "#ff0000",
+        "Very Poor": "#8f3f97",
+        "Severe": "#7e0023"
+      }
+    },
+    {
+      "id": "pollutant-comparison",
+      "title": "Pollutant Comparison",
+      "type": "radar_chart",
+      "position": {"row": 5, "col": 11, "width": 2, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, parameter, AVG(value) as avg_value FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '24 hours' AND is_cleaned = TRUE GROUP BY city, parameter",
+        "refId": "E"
+      }
+    },
+    {
+      "id": "unhealthy-hours-table",
+      "title": "Unhealthy Hours (Last 24h)",
+      "type": "table",
+      "position": {"row": 9, "col": 1, "width": 12, "height": 3},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT * FROM v_unhealthy_hours_24h ORDER BY unhealthy_pct DESC",
+        "refId": "F"
+      },
+      "columns": [
+        {"field": "city", "label": "City"},
+        {"field": "parameter", "label": "Parameter"},
+        {"field": "unhealthy_hours", "label": "Unhealthy Hours"},
+        {"field": "very_poor_hours", "label": "Very Poor Hours"},
+        {"field": "severe_hours", "label": "Severe Hours"},
+        {"field": "unhealthy_pct", "label": "% Unhealthy"}
+      ],
+      "conditional_formatting": [
+        {"field": "unhealthy_pct", "condition": ">50", "background_color": "#ff0000", "text_color": "#ffffff"},
+        {"field": "unhealthy_pct", "condition": ">25", "background_color": "#ff7e00", "text_color": "#000000"}
+      ]
+    }
+  ],
+  "variables": [
+    {"name": "city", "type": "query", "label": "City", "default": "Delhi", "query": "SELECT DISTINCT city FROM stations ORDER BY city"},
+    {"name": "time_range", "type": "interval", "label": "Time Range", "default": "7d", "options": ["1h", "6h", "24h", "7d", "30d", "90d"]},
+    {"name": "parameter", "type": "query", "label": "Parameter", "default": "pm25", "query": "SELECT DISTINCT parameter FROM aqi_readings ORDER BY parameter"}
+  ]
+}

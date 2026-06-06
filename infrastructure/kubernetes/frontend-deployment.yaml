@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: adithyaganesh640/front-end:v1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://backend:5000/api/v1"
+
+        - name: NEXT_PUBLIC_ML_API_URL
+          value: "http://ml-service:8000/api/ml"
+
+        - name: NEXT_PUBLIC_MAP_TILE_URL
+          value: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

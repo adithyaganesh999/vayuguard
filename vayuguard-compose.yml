@@ -1,0 +1,37 @@
+services:
+  frontend:
+    image: front-end:v1
+    container_name: vayu-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  backend:
+    image: back-end:v1
+    container_name: vayu-backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+      - ml-service
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/vayuguard
+      ML_SERVICE_URL: http://ml-service:8000
+
+  ml-service:
+    image: ml-service:v1
+    container_name: vayu-ml
+    ports:
+      - "8000:8000"
+
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

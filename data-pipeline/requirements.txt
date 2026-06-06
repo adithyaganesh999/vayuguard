@@ -1,0 +1,32 @@
+# VayuGuard Data Pipeline - Python Dependencies
+# ================================================
+
+# HTTP & API
+requests>=2.31.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.24.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+pymongo>=4.6.0
+
+# Scheduling
+croniter>=1.4.0
+
+# Testing
+pytest>=7.4.0
+
+# Configuration
+pyyaml>=6.0.1
+
+# Data Quality & Transformation (optional - uncomment when ready)
+# dbt-core>=1.7.0
+# great-expectations>=0.18.0
+
+# Additional utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+scikit-learn>=1.3.0

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+
+spec:
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: backend
+
+  template:
+    metadata:
+      labels:
+        app: backend
+
+    spec:
+      containers:
+      - name: backend
+        image: adithyaganesh640/back-end:v1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+
+        env:
+        - name: NODE_ENV
+          value: "production"
+
+        - name: PORT
+          value: "5000"
+
+        - name: MONGODB_URI
+          value: "mongodb://mongodb:27017/vayuguard"
+
+        - name: ML_SERVICE_URL
+          value: "http://ml-service:8000"
+
+        - name: CORS_ORIGIN
+          value: "http://frontend:3000"
+
+        - name: JWT_SECRET
+          value: "dev-jwt-secret-change-in-production-abc123"
+
+        - name: JWT_EXPIRES_IN
+          value: "24h"
+
+        - name: LOG_LEVEL
+          value: "info"

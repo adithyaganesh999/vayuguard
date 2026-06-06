@@ -1,0 +1,239 @@
+name: CD Production
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: cd-production-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: meta
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.mern-frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mern-backend
+          file: infrastructure/docker/Dockerfile.mern-backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build ML service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ml-service
+          file: ml-service/Dockerfile.ml
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/ml-service:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/ml-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  run-tests:
+    name: Run Production Tests
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: test
+          MONGO_INITDB_ROOT_PASSWORD: test
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: vayuguard_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies & test
+        working-directory: mern-backend
+        env:
+          NODE_ENV: test
+          MONGODB_URI: mongodb://test:test@localhost:27017/vayuguard_test?authSource=admin
+          POSTGRES_URI: postgresql://test:test@localhost:5432/vayuguard_test
+          JWT_SECRET: test-jwt-secret
+          ML_SERVICE_URL: http://localhost:8000
+        run: |
+          npm ci
+          npm test
+          npm run test:integration
+
+      - name: Install ML dependencies & test
+        working-directory: ml-service
+        run: |
+          pip install -r requirements.txt pytest pytest-cov
+          python -m pytest tests/ -v
+
+      - name: Install pipeline dependencies & test
+        working-directory: data-pipeline
+        env:
+          POSTGRES_URI: postgresql://test:test@localhost:5432/vayuguard_test
+        run: |
+          pip install -r requirements.txt pytest
+          python -m pytest tests/ -v
+
+  approve-deployment:
+    name: Approve Production Deployment
+    runs-on: ubuntu-latest
+    needs: [build-and-test, run-tests]
+    environment: production
+    steps:
+      - name: Await approval
+        run: |
+          echo "Production deployment awaiting approval..."
+          echo "Version: ${{ needs.build-and-test.outputs.image_tag }}"
+          echo "Release: ${{ github.event.release.name }}"
+          echo "Commit: ${{ github.sha }}"
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-test, run-tests, approve-deployment]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+
+      - name: Deploy with Helm
+        env:
+          IMAGE_TAG: ${{ needs.build-and-test.outputs.image_tag }}
+        run: |
+          helm upgrade --install vayuguard ./infrastructure/helm/vayuguard \
+            --namespace vayuguard-production \
+            --values ./infrastructure/helm/values-production.yaml \
+            --set frontend.image.tag=$IMAGE_TAG \
+            --set backend.image.tag=$IMAGE_TAG \
+            --set mlService.image.tag=$IMAGE_TAG \
+            --wait --timeout=300s
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/frontend -n vayuguard-production --timeout=300s
+          kubectl rollout status deployment/backend -n vayuguard-production --timeout=300s
+          kubectl rollout status deployment/ml-service -n vayuguard-production --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          chmod +x scripts/integration-test.sh
+          ./scripts/integration-test.sh production
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, initiating rollback..."
+          kubectl rollout undo deployment/frontend -n vayuguard-production
+          kubectl rollout undo deployment/backend -n vayuguard-production
+          kubectl rollout undo deployment/ml-service -n vayuguard-production
+          echo "Rollback initiated. Check status manually."
+
+      - name: Notify success
+        if: success()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚀 Production deployment successful!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚀 *Production deployment successful!*\nVersion: `${{ needs.build-and-test.outputs.image_tag }}`\nRelease: ${{ github.event.release.name }}\nDeployed by: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_PRODUCTION }}
+
+      - name: Notify failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔴 Production deployment FAILED!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🔴 *Production deployment FAILED!*\nVersion: `${{ needs.build-and-test.outputs.image_tag }}`\nRollback initiated. Immediate attention required."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_PRODUCTION }}

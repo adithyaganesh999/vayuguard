@@ -1,0 +1,143 @@
+# VayuGuard System Architecture Diagram
+
+> This would be a system architecture diagram showing the complete VayuGuard infrastructure.
+
+## Architecture Overview (Text Representation)
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          nginx Reverse Proxy                             │
+│                    (SSL termination, rate limiting, routing)              │
+└──────────┬──────────────────┬──────────────────┬────────────────────────┘
+           │                  │                  │
+           ▼                  ▼                  ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   Frontend       │ │   Backend API    │ │   ML Service     │
+│   (Next.js)      │ │   (Express.js)   │ │   (FastAPI)      │
+│   Port: 3000     │ │   Port: 5000     │ │   Port: 8000     │
+│                  │ │                  │ │                  │
+│ • React Pages    │ │ • REST API       │ │ • /api/forecast  │
+│ • Dashboard      │ │ • Auth (JWT)     │ │ • /api/health-   │
+│ • Map View       │ │ • User Mgmt      │ │   risk           │
+│ • Forecasts      │ │ • Alert Svc      │ │ • /api/model/    │
+│ • Health Profile │ │ • Profile Svc    │ │   version        │
+└──────────────────┘ └────────┬─────────┘ └────────┬─────────┘
+                              │                     │
+                              ▼                     ▼
+                     ┌──────────────────┐  ┌──────────────────┐
+                     │   MongoDB        │  │   Model Storage   │
+                     │   (User DB)      │  │   (*.pkl files)   │
+                     │                  │  │   (MLflow)        │
+                     │ • Users          │  └──────────────────┘
+                     │ • HealthProfiles │
+                     │ • AlertSubs      │
+                     │ • SavedLocations │
+                     │ • Notifications  │
+                     └──────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          Data Pipeline                                   │
+│                    (Python / Apache Airflow)                              │
+└──────────┬──────────────────┬──────────────────┬────────────────────────┘
+           │                  │                  │
+           ▼                  ▼                  ▼
+┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│   OpenAQ API     │ │   CPCB API       │ │   Open-Meteo API │
+│   (AQI Data)     │ │   (Station Data) │ │   (Weather Data) │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────┐
+                     │   PostgreSQL     │
+                     │   (Analytics DB) │
+                     │                  │
+                     │ • stations       │
+                     │ • aqi_readings   │
+                     │ • weather_readings│
+                     │ • forecasts      │
+                     │ • alerts         │
+                     └──────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│                      Monitoring & Observability                          │
+├──────────────────┬──────────────────┬───────────────────────────────────┤
+│   Prometheus     │   Grafana        │   Alertmanager                    │
+│   (Metrics)      │   (Dashboards)   │   (Notifications)                 │
+└──────────────────┴──────────────────┴───────────────────────────────────┘
+```
+
+## Component Details
+
+### 1. Frontend (Next.js)
+- **Framework**: Next.js 16 with App Router
+- **Port**: 3000
+- **Purpose**: User-facing web application with dashboard, map, forecasts, and health profiles
+- **Key Features**:
+  - Real-time AQI dashboard with gauge and trend charts
+  - Interactive map with heatmap overlay
+  - 48-hour and 7-day forecast views
+  - Personalized health risk assessment
+  - Alert subscriptions and notification management
+
+### 2. Backend API (Express.js)
+- **Framework**: Express.js with Node.js
+- **Port**: 5000
+- **Purpose**: RESTful API server handling authentication, user management, and data orchestration
+- **Key Features**:
+  - JWT-based authentication
+  - User CRUD operations
+  - Alert subscription management
+  - Health profile management
+  - Proxy to ML service and data pipeline
+
+### 3. ML Service (FastAPI)
+- **Framework**: FastAPI with Python 3.10+
+- **Port**: 8000
+- **Purpose**: Machine learning inference service for AQI forecasting and health risk scoring
+- **Key Features**:
+  - LSTM-based time series forecasting
+  - XGBoost ensemble models
+  - Prophet decomposition models
+  - Health risk scoring engine
+  - Model versioning via MLflow
+
+### 4. Data Pipeline
+- **Framework**: Python with Apache Airflow
+- **Purpose**: ETL pipeline for ingesting, cleaning, and transforming air quality data
+- **Data Sources**:
+  - **OpenAQ**: Global air quality data from public sources
+  - **CPCB**: Central Pollution Control Board (India) station data
+  - **Open-Meteo**: Weather data (temperature, humidity, wind)
+- **Schedules**:
+  - Real-time ingestion: Every 15 minutes
+  - Daily aggregation: 00:00 UTC
+  - Weekly analytics: Sunday 02:00 UTC
+
+### 5. Databases
+- **MongoDB**: User data, profiles, alerts, notifications
+- **PostgreSQL**: Structured analytics data, AQI readings, weather data, forecasts
+
+### 6. Infrastructure
+- **nginx**: Reverse proxy with SSL, load balancing, rate limiting
+- **Docker**: Containerized microservices
+- **Kubernetes**: Orchestration (production)
+- **Terraform**: Infrastructure as Code
+- **Prometheus + Grafana**: Monitoring and dashboards
+
+## Network Flow
+
+1. **User Request**: Client → nginx → Frontend (Next.js)
+2. **API Call**: Frontend → nginx → Backend API (Express)
+3. **ML Inference**: Backend → nginx → ML Service (FastAPI)
+4. **Data Query**: Backend → PostgreSQL / MongoDB
+5. **Data Ingestion**: External APIs → Data Pipeline → PostgreSQL
+6. **Monitoring**: All services → Prometheus → Grafana
+
+## Security Architecture
+
+- **SSL/TLS**: All external traffic encrypted via nginx
+- **JWT**: Token-based authentication for API access
+- **Rate Limiting**: Per-IP and per-user rate limits
+- **CORS**: Configured for frontend domain only
+- **Environment Variables**: Secrets managed via .env files (production: vault)
+- **Database**: Connection pooling, read replicas for PostgreSQL

@@ -1,0 +1,167 @@
+{
+  "dashboard": {
+    "id": "data-quality",
+    "title": "VayuGuard Data Quality Dashboard",
+    "description": "Monitor data pipeline health, quality metrics, and ingestion status",
+    "version": "1.0.0",
+    "refresh_interval_seconds": 300,
+    "layout": "grid",
+    "theme": "light"
+  },
+  "panels": [
+    {
+      "id": "pipeline-health",
+      "title": "Pipeline Health Status",
+      "type": "stat_cards",
+      "position": {"row": 1, "col": 1, "width": 12, "height": 2},
+      "metrics": [
+        {
+          "title": "Overall Status",
+          "query": "SELECT status FROM pipeline_health",
+          "format": "text",
+          "thresholds": [{"value": "healthy", "color": "#2ecc71"}, {"value": "degraded", "color": "#f39c12"}, {"value": "unhealthy", "color": "#e74c3c"}]
+        },
+        {
+          "title": "AQI Ingestion",
+          "query": "SELECT EXTRACT(EPOCH FROM (NOW() - MAX(timestamp_utc)))/3600 as hours_ago FROM aqi_readings",
+          "unit": "h ago",
+          "format": "decimal",
+          "thresholds": [{"value": 2, "color": "#e74c3c"}, {"value": 1, "color": "#f39c12"}, {"value": 0, "color": "#2ecc71"}]
+        },
+        {
+          "title": "Weather Ingestion",
+          "query": "SELECT EXTRACT(EPOCH FROM (NOW() - MAX(timestamp_utc)))/3600 as hours_ago FROM weather_readings",
+          "unit": "h ago",
+          "format": "decimal",
+          "thresholds": [{"value": 3, "color": "#e74c3c"}, {"value": 2, "color": "#f39c12"}, {"value": 0, "color": "#2ecc71"}]
+        },
+        {
+          "title": "Active Stations",
+          "query": "SELECT COUNT(*) FROM stations WHERE is_active = TRUE",
+          "unit": "",
+          "format": "number"
+        },
+        {
+          "title": "Records (24h)",
+          "query": "SELECT COUNT(*) FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '24 hours'",
+          "unit": "",
+          "format": "compact_number"
+        },
+        {
+          "title": "Data Quality Score",
+          "query": "SELECT AVG(quality_score) FROM data_quality_scores WHERE date = CURRENT_DATE",
+          "unit": "%",
+          "format": "decimal",
+          "thresholds": [{"value": 80, "color": "#2ecc71"}, {"value": 60, "color": "#f39c12"}, {"value": 0, "color": "#e74c3c"}]
+        }
+      ]
+    },
+    {
+      "id": "completeness-trend",
+      "title": "Data Completeness Over Time",
+      "type": "line_chart",
+      "position": {"row": 3, "col": 1, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT DATE(timestamp_utc) as date, city, COUNT(DISTINCT parameter) / 8.0 * 100 as completeness_pct FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '30 days' GROUP BY DATE(timestamp_utc), city ORDER BY date",
+        "refId": "completeness"
+      },
+      "x_axis": {"field": "date", "label": "Date", "type": "datetime"},
+      "y_axis": {"field": "completeness_pct", "label": "Completeness %", "min": 0, "max": 100},
+      "series": {"group_by": "city"},
+      "thresholds": [
+        {"value": 95, "label": "Target (95%)", "color": "#2ecc71", "style": "dashed"},
+        {"value": 80, "label": "Minimum (80%)", "color": "#e74c3c", "style": "dashed"}
+      ]
+    },
+    {
+      "id": "quality-check-results",
+      "title": "Quality Check Results",
+      "type": "table",
+      "position": {"row": 3, "col": 7, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT check_name, passed, severity, details, timestamp FROM quality_check_results WHERE timestamp >= NOW() - INTERVAL '24 hours' ORDER BY timestamp DESC",
+        "refId": "quality"
+      },
+      "columns": [
+        {"field": "check_name", "label": "Check"},
+        {"field": "passed", "label": "Status"},
+        {"field": "severity", "label": "Severity"},
+        {"field": "details", "label": "Details"},
+        {"field": "timestamp", "label": "Time"}
+      ],
+      "conditional_formatting": [
+        {"field": "passed", "condition": "==false", "background_color": "#ffcccc"},
+        {"field": "severity", "condition": "==critical", "background_color": "#ff0000", "text_color": "#ffffff"}
+      ]
+    },
+    {
+      "id": "ingestion-rate",
+      "title": "Ingestion Rate (records/hour)",
+      "type": "area_chart",
+      "position": {"row": 7, "col": 1, "width": 4, "height": 3},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT DATE_TRUNC('hour', timestamp_utc) as hour, COUNT(*) as records FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '48 hours' GROUP BY DATE_TRUNC('hour', timestamp_utc) ORDER BY hour",
+        "refId": "rate"
+      },
+      "x_axis": {"field": "hour", "type": "datetime"},
+      "y_axis": {"field": "records", "label": "Records"},
+      "fill": 0.3
+    },
+    {
+      "id": "source-distribution",
+      "title": "Data Source Distribution",
+      "type": "pie_chart",
+      "position": {"row": 7, "col": 5, "width": 4, "height": 3},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT source, COUNT(*) as count FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '24 hours' GROUP BY source",
+        "refId": "source"
+      },
+      "colors": {"openaq": "#3498db", "cpcb": "#e74c3c"}
+    },
+    {
+      "id": "parameter-coverage",
+      "title": "Parameter Coverage by City",
+      "type": "heatmap_chart",
+      "position": {"row": 7, "col": 9, "width": 4, "height": 3},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT city, parameter, COUNT(*) as count FROM aqi_readings WHERE timestamp_utc >= NOW() - INTERVAL '24 hours' AND is_cleaned = TRUE GROUP BY city, parameter",
+        "refId": "param"
+      },
+      "x_axis": {"field": "parameter"},
+      "y_axis": {"field": "city"},
+      "value_field": "count",
+      "color_scale": {"min": 0, "max": 24, "colors": ["#ffffff", "#3498db"]}
+    },
+    {
+      "id": "error-log",
+      "title": "Recent Pipeline Errors",
+      "type": "log_table",
+      "position": {"row": 10, "col": 1, "width": 12, "height": 3},
+      "datasource": "pipeline_logs",
+      "query": {
+        "sql": "SELECT timestamp, level, task, message FROM pipeline_errors WHERE timestamp >= NOW() - INTERVAL '24 hours' ORDER BY timestamp DESC LIMIT 50",
+        "refId": "errors"
+      },
+      "columns": [
+        {"field": "timestamp", "label": "Time"},
+        {"field": "level", "label": "Level"},
+        {"field": "task", "label": "Task"},
+        {"field": "message", "label": "Message"}
+      ],
+      "conditional_formatting": [
+        {"field": "level", "condition": "==ERROR", "background_color": "#ffcccc"},
+        {"field": "level", "condition": "==CRITICAL", "background_color": "#ff0000", "text_color": "#ffffff"}
+      ]
+    }
+  ],
+  "variables": [
+    {"name": "time_range", "type": "interval", "label": "Time Range", "default": "24h", "options": ["1h", "6h", "24h", "7d", "30d"]},
+    {"name": "city", "type": "query", "label": "City", "default": "all", "query": "SELECT DISTINCT city FROM stations ORDER BY city"},
+    {"name": "source", "type": "custom", "label": "Source", "default": "all", "options": ["all", "openaq", "cpcb"]}
+  ]
+}

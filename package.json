@@ -1,0 +1,29 @@
+{
+  "name": "vayuguard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VayuGuard - Real-time Air Quality Monitoring Platform",
+  "scripts": {
+    "dev": "cd mern-frontend && npm run dev",
+    "dev:frontend": "cd mern-frontend && npm run dev",
+    "dev:backend": "cd mern-backend && npm run dev",
+    "dev:ml": "cd ml-service && python -m uvicorn inference.fastapi_app:app --reload --port 8000",
+    "dev:pipeline": "cd data-pipeline && python -m ingestion.orchestrator",
+    "dev:all": "bash scripts/local-dev-no-docker.sh",
+    "install:all": "cd mern-frontend && npm install && cd ../mern-backend && npm install",
+    "build:frontend": "cd mern-frontend && npm run build",
+    "build:backend": "cd mern-backend && npm run build",
+    "build": "cd mern-frontend && npm run build",
+    "prisma:generate": "cd mern-frontend && npx prisma generate",
+    "prisma:push": "cd mern-frontend && npx prisma db push",
+    "prisma:studio": "cd mern-frontend && npx prisma studio",
+    "docker:up": "bash scripts/local-dev-up.sh",
+    "docker:down": "bash scripts/local-dev-down.sh",
+    "seed": "node scripts/seed-demo-data.js",
+    "health": "bash infrastructure/scripts/health-check.sh",
+    "test:integration": "bash scripts/integration-test.sh",
+    "lint": "cd mern-frontend && npm run lint"
+  },
+  "keywords": ["air-quality", "aqi", "monitoring", "health", "forecast"],
+  "author": "VayuGuard Team"
+}

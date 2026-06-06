@@ -1,0 +1,150 @@
+{
+  "dashboard": {
+    "id": "hotspot-map",
+    "title": "VayuGuard Pollution Hotspot Map",
+    "description": "Geospatial visualization of air pollution hotspots across India",
+    "version": "1.0.0",
+    "refresh_interval_seconds": 600,
+    "layout": "grid",
+    "theme": "dark"
+  },
+  "panels": [
+    {
+      "id": "india-hotspot-map",
+      "title": "India Hotspot Map",
+      "type": "map",
+      "position": {"row": 1, "col": 1, "width": 8, "height": 6},
+      "datasource": "vayuguard_postgres",
+      "map_config": {
+        "center": {"lat": 22.5, "lon": 79.0},
+        "zoom": 5,
+        "style": "dark",
+        "bounds": {"north": 37, "south": 6, "east": 97, "west": 68}
+      },
+      "layers": [
+        {
+          "id": "stations-layer",
+          "type": "circle",
+          "query": {
+            "sql": "SELECT s.station_id, s.station_name, s.city, s.latitude, s.longitude, a.value as aqi FROM stations s JOIN LATEST aqi_readings a ON s.station_id = a.station_id WHERE s.is_active = TRUE",
+            "refId": "stations"
+          },
+          "style": {
+            "size_field": "aqi",
+            "size_range": [4, 20],
+            "color_field": "aqi",
+            "color_scale": "quantile",
+            "color_range": ["#00e400", "#ffff00", "#ff7e00", "#ff0000", "#8f3f97", "#7e0023"],
+            "opacity": 0.8,
+            "stroke_color": "#ffffff",
+            "stroke_width": 1
+          },
+          "tooltip": ["station_name", "city", "aqi"]
+        },
+        {
+          "id": "hotspot-heatmap",
+          "type": "heatmap",
+          "query": {
+            "sql": "SELECT s.latitude, s.longitude, AVG(a.value) as avg_aqi FROM stations s JOIN aqi_readings a ON s.station_id = a.station_id WHERE a.timestamp_utc >= NOW() - INTERVAL '24 hours' AND a.parameter = 'pm25' AND a.is_cleaned = TRUE GROUP BY s.latitude, s.longitude",
+            "refId": "heatmap"
+          },
+          "style": {
+            "weight_field": "avg_aqi",
+            "intensity": 0.6,
+            "radius": 25,
+            "blur": 15,
+            "color_gradient": ["#00e400", "#ffff00", "#ff7e00", "#ff0000", "#7e0023"]
+          }
+        },
+        {
+          "id": "hotspot-clusters",
+          "type": "cluster",
+          "query": {
+            "sql": "SELECT hotspot_id, center_lat, center_lon, radius_km, avg_aqi, severity, affected_cities FROM analytics_hotspots WHERE severity IN ('severe', 'high')",
+            "refId": "clusters"
+          },
+          "style": {
+            "color_field": "severity",
+            "severity_colors": {"severe": "#7e0023", "high": "#ff0000", "moderate": "#ff7e00"},
+            "show_labels": true,
+            "label_field": "affected_cities"
+          }
+        }
+      ]
+    },
+    {
+      "id": "hotspot-ranking",
+      "title": "Hotspot Risk Ranking",
+      "type": "table",
+      "position": {"row": 1, "col": 9, "width": 4, "height": 6},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT hotspot_id, affected_cities, avg_aqi, max_aqi, severity, risk_score, station_count, estimated_exposed_pop FROM analytics_hotspots ORDER BY risk_score DESC LIMIT 20",
+        "refId": "ranking"
+      },
+      "columns": [
+        {"field": "hotspot_id", "label": "ID"},
+        {"field": "affected_cities", "label": "Cities"},
+        {"field": "avg_aqi", "label": "Avg AQI"},
+        {"field": "severity", "label": "Severity"},
+        {"field": "risk_score", "label": "Risk Score"},
+        {"field": "estimated_exposed_pop", "label": "Pop. Exposed"}
+      ],
+      "conditional_formatting": [
+        {"field": "severity", "condition": "==severe", "background_color": "#7e0023", "text_color": "#ffffff"},
+        {"field": "severity", "condition": "==high", "background_color": "#ff0000", "text_color": "#ffffff"}
+      ]
+    },
+    {
+      "id": "wind-pollution-overlay",
+      "title": "Wind-Pollution Overlay",
+      "type": "map",
+      "position": {"row": 7, "col": 1, "width": 6, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "layers": [
+        {
+          "id": "wind-arrows",
+          "type": "arrow",
+          "query": {
+            "sql": "SELECT city, latitude, longitude, wind_speed_10m, wind_direction_10m FROM weather_readings WHERE timestamp_utc >= NOW() - INTERVAL '1 hour'",
+            "refId": "wind"
+          },
+          "style": {
+            "direction_field": "wind_direction_10m",
+            "speed_field": "wind_speed_10m",
+            "color": "#ffffff",
+            "opacity": 0.6
+          }
+        }
+      ]
+    },
+    {
+      "id": "severity-distribution",
+      "title": "Hotspot Severity Distribution",
+      "type": "donut_chart",
+      "position": {"row": 7, "col": 7, "width": 3, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT severity, COUNT(*) as count FROM analytics_hotspots GROUP BY severity",
+        "refId": "severity"
+      },
+      "colors": {"severe": "#7e0023", "high": "#ff0000", "moderate": "#ff7e00", "low": "#00e400"}
+    },
+    {
+      "id": "exposure-population",
+      "title": "Population Exposure",
+      "type": "stat_card",
+      "position": {"row": 7, "col": 10, "width": 3, "height": 4},
+      "datasource": "vayuguard_postgres",
+      "query": {
+        "sql": "SELECT SUM(estimated_exposed_pop) as total_exposed FROM analytics_hotspots",
+        "refId": "exposure"
+      },
+      "display": {"unit": "people", "format": "compact_number", "thresholds": [{"value": 10000000, "color": "#ff0000"}, {"value": 5000000, "color": "#ff7e00"}, {"value": 0, "color": "#00e400"}]}
+    }
+  ],
+  "variables": [
+    {"name": "severity_filter", "type": "custom", "label": "Severity", "default": "all", "options": ["all", "severe", "high", "moderate", "low"]},
+    {"name": "time_window", "type": "interval", "label": "Time Window", "default": "24h", "options": ["1h", "6h", "24h", "7d"]}
+  ]
+}
