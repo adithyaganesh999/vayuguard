@@ -14,58 +14,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    # Frontend
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      # Frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-    - name: Install Frontend Dependencies
-      working-directory: ./mern-frontend
-      run: npm install
+      - name: Install Frontend Dependencies
+        working-directory: ./mern-frontend
+        run: npm install
 
-    - name: Build Frontend
-      working-directory: ./mern-frontend
-      run: npm run build
+      - name: Build Frontend
+        working-directory: ./mern-frontend
+        run: npm run build
 
-    # Backend
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      # Backend
+      - name: Install Backend Dependencies
+        working-directory: ./mern-backend
+        run: npm install
 
-    - name: Install Backend Dependencies
-      working-directory: ./mern-backend
-      run: |
-        pip install -r requirements.txt
+      # ML Service
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    # ML Service
-    - name: Install ML Dependencies
-      working-directory: ./ml-service
-      run: |
-        pip install -r requirements.txt
+      - name: Install ML Dependencies
+        working-directory: ./ml-service
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # Docker Images
-    - name: Build Frontend Docker Image
-      run: |
-        docker build \
-        -f infrastructure/docker/Dockerfile.frontend \
-        -t placemux-frontend .
+      # Docker Build Checks
+      - name: Build Frontend Docker Image
+        run: |
+          docker build \
+            -f mern-frontend/Dockerfile \
+            -t placemux-frontend .
 
-    - name: Build Backend Docker Image
-      run: |
-        docker build \
-        -f infrastructure/docker/Dockerfile.backend \
-        -t placemux-backend .
+      - name: Build Backend Docker Image
+        run: |
+          docker build \
+            -f mern-backend/Dockerfile \
+            -t placemux-backend .
 
-    - name: Build ML Docker Image
-      run: |
-        docker build \
-        -f infrastructure/docker/Dockerfile.ml \
-        -t placemux-ml .
+      - name: Build ML Docker Image
+        run: |
+          docker build \
+            -f infrastructure/docker/Dockerfile.ml \
+            -t placemux-ml .
 
-    - name: Success
-      run: echo "CI Pipeline Completed Successfully"
+      - name: CI Success
+        run: echo "PlaceMux CI completed successfully!"
