@@ -1,279 +1,34 @@
-# =============================================================================
-# VayuGuard - Prometheus Alert Rules
-# =============================================================================
-# Alert definitions for critical infrastructure and application conditions
-# =============================================================================
-
 groups:
-
-  # ===== Application Error Alerts =====
-  - name: vayuguard.application.errors
+  - name: vayugaard-alerts
     rules:
-      - alert: HighErrorRate
-        expr: |
-          (
-            sum(rate(http_requests_failed_total[5m]))
-            /
-            sum(rate(http_requests_total[5m]))
-          ) * 100 > 5
-        for: 3m
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
         labels:
           severity: critical
-          team: backend
-          component: api
-          runbook_url: "https://docs.vayuguard.com/runbooks/high-error-rate"
         annotations:
-          summary: "High error rate detected on {{ $labels.service }}"
-          description: >
-            The HTTP error rate (5xx) for service {{ $labels.service }} has been
-            above 5% for the last 3 minutes. Current error rate: {{ $value | printf "%.2f" }}%.
-            This may indicate a service degradation or upstream dependency failure.
-          action: >
-            Check service logs for errors, verify upstream dependencies (databases, APIs),
-            and review recent deployments for regressions.
+          summary: "Service {{ $labels.job }} is down"
 
-      - alert: ElevatedErrorRate
-        expr: |
-          (
-            sum(rate(http_requests_failed_total[5m]))
-            /
-            sum(rate(http_requests_total[5m]))
-          ) * 100 > 2
-        for: 10m
-        labels:
-          severity: warning
-          team: backend
-          component: api
-        annotations:
-          summary: "Elevated error rate on {{ $labels.service }}"
-          description: >
-            The HTTP error rate for service {{ $labels.service }} has been
-            above 2% for 10 minutes. Current rate: {{ $value | printf "%.2f" }}%.
-
-  # ===== ML Model Alerts =====
-  - name: vayuguard.ml.model
-    rules:
-      - alert: ModelDriftDetected
-        expr: |
-          model_drift_score > 0.6
-        for: 15m
-        labels:
-          severity: warning
-          team: ml-engineering
-          component: ml
-          runbook_url: "https://docs.vayuguard.com/runbooks/model-drift"
-        annotations:
-          summary: "ML model drift detected for model {{ $labels.model_version }}"
-          description: >
-            The drift score for model version {{ $labels.model_version }} has exceeded
-            the threshold of 0.6 for 15 minutes. Current drift score: {{ $value | printf "%.3f" }}.
-            Feature distribution shifts may be causing prediction accuracy degradation.
-          action: >
-            Review feature distributions, compare training vs. serving data,
-            evaluate model retraining, and consider rolling back to a stable model version.
-
-      - alert: ModelAccuracyDegraded
-        expr: |
-          prediction_mae > 25
-        for: 30m
-        labels:
-          severity: warning
-          team: ml-engineering
-          component: ml
-        annotations:
-          summary: "ML model accuracy has degraded"
-          description: >
-            The Mean Absolute Error (MAE) for model {{ $labels.model_version }}
-            has been above 25 for 30 minutes. Current MAE: {{ $value | printf "%.2f" }}.
-            This exceeds the acceptable threshold for AQI prediction accuracy.
-          action: >
-            Investigate data quality, check for feature drift, verify data pipeline
-            integrity, and evaluate if model retraining is needed.
-
-      - alert: PredictionLatencyHigh
-        expr: |
-          histogram_quantile(0.95, rate(prediction_latency_seconds_bucket[5m])) > 2
-        for: 10m
-        labels:
-          severity: warning
-          team: ml-engineering
-          component: ml
-        annotations:
-          summary: "ML prediction latency is too high"
-          description: >
-            The 95th percentile prediction latency has been above 2 seconds
-            for 10 minutes. Current p95 latency: {{ $value | printf "%.2f" }}s.
-            Users may experience delays in receiving air quality predictions.
-          action: >
-            Check ML service resource utilization, verify model loading,
-            review batch prediction queue depth, and consider scaling the service.
-
-  # ===== Data Pipeline Alerts =====
-  - name: vayuguard.pipeline.health
-    rules:
-      - alert: PipelineDown
-        expr: |
-          pipeline_up == 0
-        for: 5m
-        labels:
-          severity: critical
-          team: data-engineering
-          component: etl
-          runbook_url: "https://docs.vayuguard.com/runbooks/pipeline-down"
-        annotations:
-          summary: "Data pipeline {{ $labels.pipeline_name }} is down"
-          description: >
-            The data pipeline {{ $labels.pipeline_name }} has been reporting
-            as down for 5 minutes. This may affect data freshness for ML
-            model predictions and dashboard visualizations.
-          action: >
-            Check pipeline service logs, verify source API availability,
-            review container health, and check for resource exhaustion.
-
-      - alert: PipelineStaleData
-        expr: |
-          time() - pipeline_last_success_timestamp_seconds > 3600
-        for: 10m
-        labels:
-          severity: warning
-          team: data-engineering
-          component: etl
-        annotations:
-          summary: "Pipeline {{ $labels.pipeline_name }} has stale data"
-          description: >
-            Pipeline {{ $labels.pipeline_name }} has not completed a successful
-            run in over 1 hour. Data freshness is degraded. Time since last
-            success: {{ $value | printf "%.0f" }} seconds.
-          action: >
-            Check pipeline execution logs, verify data source connectivity,
-            and review any recent configuration changes.
-
-      - alert: PipelineErrorSpike
-        expr: |
-          rate(pipeline_errors_total[10m]) > 10
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
         for: 5m
         labels:
           severity: warning
-          team: data-engineering
-          component: etl
         annotations:
-          summary: "Pipeline {{ $labels.pipeline_name }} error spike"
-          description: >
-            Pipeline {{ $labels.pipeline_name }} is experiencing an elevated
-            error rate. Current error rate: {{ $value | printf "%.1f" }} errors/s.
+          summary: "High CPU usage on {{ $labels.job }}"
 
-  # ===== Infrastructure Alerts =====
-  - name: vayuguard.infrastructure.performance
-    rules:
-      - alert: HighLatency
-        expr: |
-          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)) > 1
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes > 500000000
         for: 5m
         labels:
           severity: warning
-          team: backend
-          component: api
-          runbook_url: "https://docs.vayuguard.com/runbooks/high-latency"
         annotations:
-          summary: "High latency detected on {{ $labels.service }}"
-          description: >
-            The 95th percentile response latency for service {{ $labels.service }}
-            has been above 1 second for 5 minutes. Current p95 latency:
-            {{ $value | printf "%.2f" }}s. Users may be experiencing slow responses.
-          action: >
-            Check service resource utilization (CPU, memory), review database
-            query performance, check for slow upstream calls, and consider
-            scaling the service horizontally.
+          summary: "High memory usage on {{ $labels.job }}"
 
-      - alert: VeryHighLatency
-        expr: |
-          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)) > 5
-        for: 3m
-        labels:
-          severity: critical
-          team: backend
-          component: api
-        annotations:
-          summary: "Critical latency on {{ $labels.service }}"
-          description: >
-            The p95 response latency for service {{ $labels.service }} has exceeded
-            5 seconds for 3 minutes. Current p95 latency: {{ $value | printf "%.2f" }}s.
-            This is causing severe user experience degradation.
-
-      - alert: HighCPUUtilization
-        expr: |
-          rate(process_cpu_seconds_total[5m]) * 100 > 80
-        for: 10m
-        labels:
-          severity: warning
-          team: devops
-          component: infrastructure
-        annotations:
-          summary: "High CPU utilization on {{ $labels.service }}"
-          description: >
-            Service {{ $labels.service }} CPU utilization has been above 80%
-            for 10 minutes. Current: {{ $value | printf "%.1f" }}%.
-
-  # ===== Database Alerts =====
-  - name: vayuguard.database.health
-    rules:
-      - alert: DatabaseDown
-        expr: |
-          pg_up == 0 OR mongodb_up == 0
-        for: 2m
-        labels:
-          severity: critical
-          team: devops
-          component: database
-          runbook_url: "https://docs.vayuguard.com/runbooks/database-down"
-        annotations:
-          summary: "Database {{ $labels.instance }} is down"
-          description: >
-            The database instance {{ $labels.instance }} has been unreachable
-            for 2 minutes. All dependent services will be experiencing failures.
-          action: >
-            Immediately check database instance status, verify network connectivity,
-            review database logs for crash information, and initiate failover if
-            in a replicated setup.
-
-      - alert: DatabaseConnectionPoolExhausted
-        expr: |
-          pg_stat_activity_count > 80
+      - alert: HighResponseTime
+        expr: http_request_duration_seconds{quantile="0.9"} > 2
         for: 5m
         labels:
           severity: warning
-          team: backend
-          component: database
         annotations:
-          summary: "PostgreSQL connection pool near exhaustion"
-          description: >
-            PostgreSQL has {{ $value }} active connections, approaching the
-            maximum limit. This may cause connection timeout errors.
-
-      - alert: RedisMemoryHigh
-        expr: |
-          redis_memory_used_bytes / redis_memory_max_bytes * 100 > 85
-        for: 10m
-        labels:
-          severity: warning
-          team: devops
-          component: cache
-        annotations:
-          summary: "Redis memory usage is high"
-          description: >
-            Redis memory usage is at {{ $value | printf "%.1f" }}% of max memory.
-            Keys may start being evicted soon, affecting cache hit rates.
-
-      - alert: ReplicationLag
-        expr: |
-          pg_replication_lag_seconds > 30
-        for: 5m
-        labels:
-          severity: warning
-          team: devops
-          component: database
-        annotations:
-          summary: "PostgreSQL replication lag detected"
-          description: >
-            Replication lag is {{ $value | printf "%.1f" }} seconds. Read replicas
-            may serve stale data, affecting data consistency.
+          summary: "High response time on {{ $labels.job }}"

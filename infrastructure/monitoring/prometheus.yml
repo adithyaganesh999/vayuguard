@@ -1,166 +1,42 @@
-# =============================================================================
-# VayuGuard - Prometheus Configuration
-# =============================================================================
-# Scrape configs for backend, ml-service, data-pipeline, and infrastructure
-# =============================================================================
-
 global:
   scrape_interval: 15s
-  scrape_timeout: 10s
   evaluation_interval: 15s
-  external_labels:
-    cluster: "vayuguard"
-    environment: "production"
-    monitor: "vayuguard-monitor"
 
-# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
-        - targets:
-            - "alertmanager:9093"
-      timeout: 10s
-      api_version: v2
+        - targets: []
 
-# Load alert rules
 rule_files:
   - "alert-rules.yml"
 
-# Scrape configurations
 scrape_configs:
-
-  # ===== Prometheus Self-Monitoring =====
-  - job_name: "prometheus"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["localhost:9090"]
-        labels:
-          service: "prometheus"
-          component: "monitoring"
+      - targets: ['localhost:9090']
 
-  # ===== Backend API Service =====
-  - job_name: "vayuguard-backend"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
-    scrape_timeout: 10s
+  - job_name: 'vayugaard-backend'
     static_configs:
-      - targets: ["backend:5000"]
-        labels:
-          service: "backend"
-          component: "api"
-          team: "backend"
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: "http_request_duration_seconds.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "http_requests_total"
-        action: keep
-      - source_labels: [__name__]
-        regex: "http_requests_failed_total"
-        action: keep
-      - source_labels: [__name__]
-        regex: "node_process_cpu.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "node_process_memory.*"
-        action: keep
+      - targets: ['backend:5000']
+    metrics_path: '/metrics'
 
-  # ===== ML Prediction Service =====
-  - job_name: "vayuguard-ml-service"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
-    scrape_timeout: 10s
+  - job_name: 'vayugaard-ml'
     static_configs:
-      - targets: ["ml-service:8000"]
-        labels:
-          service: "ml-service"
-          component: "ml"
-          team: "ml-engineering"
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: "prediction_.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "model_.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "feature_.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "data_pipeline_.*"
-        action: keep
+      - targets: ['ml-service:8000']
+    metrics_path: '/metrics'
 
-  # ===== Data Pipeline Service =====
-  - job_name: "vayuguard-data-pipeline"
-    metrics_path: "/metrics"
-    scrape_interval: 30s
-    scrape_timeout: 15s
+  - job_name: 'vayugaard-frontend'
     static_configs:
-      - targets: ["data-pipeline:8080"]
-        labels:
-          service: "data-pipeline"
-          component: "etl"
-          team: "data-engineering"
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: "pipeline_.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "ingestion_.*"
-        action: keep
-      - source_labels: [__name__]
-        regex: "processing_.*"
-        action: keep
+      - targets: ['frontend:3000']
 
-  # ===== Redis Exporter =====
-  - job_name: "vayuguard-redis"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
+  - job_name: 'mongodb'
     static_configs:
-      - targets: ["redis-exporter:9121"]
-        labels:
-          service: "redis"
-          component: "cache"
+      - targets: ['mongodb:27017']
 
-  # ===== PostgreSQL Exporter =====
-  - job_name: "vayuguard-postgres"
-    metrics_path: "/metrics"
-    scrape_interval: 30s
+  - job_name: 'redis'
     static_configs:
-      - targets: ["postgres-exporter:9187"]
-        labels:
-          service: "postgres"
-          component: "database"
+      - targets: ['redis:6379']
 
-  # ===== MongoDB Exporter =====
-  - job_name: "vayuguard-mongodb"
-    metrics_path: "/metrics"
-    scrape_interval: 30s
+  - job_name: 'postgres'
     static_configs:
-      - targets: ["mongodb-exporter:9216"]
-        labels:
-          service: "mongodb"
-          component: "database"
-
-  # ===== Node Exporter (System Metrics) =====
-  - job_name: "node-exporter"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
-    static_configs:
-      - targets:
-          - "node-exporter:9100"
-        labels:
-          service: "system"
-          component: "host"
-
-  # ===== Nginx Exporter =====
-  - job_name: "nginx-exporter"
-    metrics_path: "/metrics"
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["nginx-exporter:9113"]
-        labels:
-          service: "nginx"
-          component: "proxy"
+      - targets: ['postgres:5432']
