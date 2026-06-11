@@ -2,22 +2,22 @@
 # VayuGuard CI/CD Pipeline
 # Save this file at: .github/workflows/cicd.yml
 # ============================================================
- 
+
 # Name of your pipeline — shows in GitHub Actions tab
 name: VayuGuard CI/CD Pipeline
- 
+
 # WHEN to run this pipeline
 # This means: run every time someone pushes code to main branch
 on:
   push:
     branches: [ "main" ]
- 
+
 # ============================================================
 # JOBS — each job is one stage of the pipeline
 # ============================================================
- 
+
 jobs:
- 
+
 # ============================================================
 # JOB 1: SECURITY CHECK
 # Scans your code for vulnerabilities and leaked secrets
@@ -26,11 +26,11 @@ jobs:
     # runs-on: where to run this job
     # self-hosted = your own EC2 machine (not GitHub's servers)
     runs-on: self-hosted
- 
+
     steps:
       # Step 1: Download your code from GitHub onto the runner machine
       - uses: actions/checkout@v4
- 
+
       # Step 2: Install Trivy — security scanner tool
       - name: Install Trivy
         run: |
@@ -39,22 +39,22 @@ jobs:
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
           sudo apt-get update -y
           sudo apt-get install -y trivy
- 
+
       # Step 3: Trivy scans your entire codebase for vulnerabilities
       # --format table = show results in table format
       # -o trivy-fs-report.json = save results to this file
       - name: Trivy File System Scan
         run: trivy fs --format table -o trivy-fs-report.json .
- 
+
       # Step 4: Install Gitleaks — scans for accidentally committed secrets
       # like API keys, passwords, tokens in your code
       - name: Install Gitleaks
         run: sudo apt install gitleaks -y
- 
+
       # Step 5: Gitleaks scans your git history for leaked secrets
       - name: Gitleaks Secret Scan
         run: gitleaks detect source . -r gitleaks-report.json -f json
- 
+
 # ============================================================
 # JOB 2: TEST FRONTEND
 # Runs Next.js/React tests
@@ -64,28 +64,31 @@ jobs:
   test-frontend:
     runs-on: self-hosted
     needs: security-check   # wait for security-check to pass first
- 
+
     steps:
       - uses: actions/checkout@v4
- 
+
       # Install Node.js version 20 on the runner
+      # cache: 'npm' = saves node_modules cache so npm install is faster next time
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
- 
+          cache: 'npm'
+          cache-dependency-path: mern-frontend/package-lock.json
+
       # working-directory means: run this command inside this folder
       # npm install = install all packages from package.json
       - name: Install Frontend Dependencies
         working-directory: ./mern-frontend
         run: npm install
- 
+
       # Run frontend tests
       # --passWithNoTests = don't fail if no tests exist yet
       - name: Run Frontend Tests
         working-directory: ./mern-frontend
         run: npm test -- --passWithNoTests
- 
+
 # ============================================================
 # JOB 3: TEST BACKEND
 # Runs Node.js/Express tests
@@ -94,23 +97,26 @@ jobs:
   test-backend:
     runs-on: self-hosted
     needs: security-check   # runs parallel with test-frontend
- 
+
     steps:
       - uses: actions/checkout@v4
- 
+
+      # cache: 'npm' = saves node_modules so npm install is faster next time
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
- 
+          cache: 'npm'
+          cache-dependency-path: mern-backend/package-lock.json
+
       - name: Install Backend Dependencies
         working-directory: ./mern-backend
         run: npm install
- 
+
       - name: Run Backend Tests
         working-directory: ./mern-backend
         run: npm test -- --passWithNoTests
- 
+
 # ============================================================
 # JOB 4: TEST ML SERVICE
 # Runs Python/FastAPI tests
@@ -119,21 +125,26 @@ jobs:
   test-ml:
     runs-on: self-hosted
     needs: security-check   # runs parallel with other test jobs
- 
+
     steps:
       - uses: actions/checkout@v4
- 
+
       # Install Python 3.11
+      # cache: 'pip' = saves downloaded packages so pip install is faster next time
+      # First run: downloads torch (10 mins)
+      # Second run: loads from cache (30 secs)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
- 
+          cache: 'pip'
+          cache-dependency-path: ml-service/requirements.txt
+
       # pip install all Python packages from requirements.txt
       - name: Install ML Dependencies
         working-directory: ./ml-service
         run: pip install -r requirements.txt
- 
+
       # Run pytest — Python test framework
       # -v = verbose, show each test name
       # --tb=short = show short error messages
